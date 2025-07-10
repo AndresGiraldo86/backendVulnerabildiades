@@ -45,33 +45,52 @@ async def scan_url(request: ScanRequest):
     print("➡️ Recibida solicitud para escanear:", request.url)
     url = request.url
     TEMPLATES_PATH = "/Users/andresgiraldo/Desktop/Proyecto WebApi Andres/nuclei-templates"
- 
 
     try:
-        # Ejecutar nuclei con la URL proporcionada
         result = subprocess.run(
-       # [NUCLEI_PATH, "-u", url, "-jsonl"],
-        [NUCLEI_PATH, "-u", url, "-jsonl", "-templates", TEMPLATES_PATH],
+            [NUCLEI_PATH, "-u", url, "-jsonl", "-templates", TEMPLATES_PATH],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True
         )
 
-        # Parsear cada línea JSON de la salida
-        print("STDOUT:", result.stdout),
-        print("STDERR:", result.stderr),
+        print("STDOUT:", result.stdout)
+        print("STDERR:", result.stderr)
+
         findings = [
             json.loads(line)
             for line in result.stdout.strip().split("\n")
             if line.strip()
         ]
 
-        # Devolver resultado
+        # 🧹 Eliminar hallazgos duplicados (por name y matchedAt)
+        summary = []
+        seen = set()
+
+        for v in findings:
+            info = v.get("info", {})
+            name = info.get("name")
+            matched_at = v.get("matched-at")
+            key = (name, matched_at)
+
+            if key in seen:
+                continue
+            seen.add(key)
+
+            summary.append({
+                "templateID": v.get("templateID"),
+                "matchedAt": matched_at,
+                "severity": info.get("severity"),
+                "name": name,
+                "description": info.get("description") or "Sin descripción",
+                "reference": info.get("reference", []) or ["N/A"]
+            })
+
         return {
             "status": "ok",
-            "stdout": result.stdout,
-            "stderr": result.stderr,
-            "vulnerabilities": findings
+            "count": len(summary),
+            "vulnerabilities": summary,
+            "stderr": result.stderr.strip()
         }
 
     except Exception as e:
