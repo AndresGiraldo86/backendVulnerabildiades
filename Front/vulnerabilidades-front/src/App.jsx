@@ -12,10 +12,10 @@ function App() {
     setVulnerabilidades([]);
 
     try {
-      const res = await fetch("http://127.0.0.1:8000/scan", {
+      const res = await fetch("http://127.0.0.1:8000/scan-json", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url }),
+        body: JSON.stringify({ url,}),
       });
 
       const data = await res.json();
@@ -23,7 +23,8 @@ function App() {
       if (data.status === "ok") {
         setVulnerabilidades(data.vulnerabilities);
       } else {
-        setError("Error al procesar la respuesta del backend.");
+        console.error("Respuesta del backend:", data);
+        setError("Error al procesar la respuesta del backend. " + (data.error || ""));
       }
     } catch (e) {
       setError("Hubo un error al hacer el escaneo");
@@ -49,6 +50,7 @@ function App() {
 
   return (
     <div className="p-6 max-w-7xl mx-auto">
+      
       <h1 className="text-3xl font-bold mb-4">🔍 Escáner de Vulnerabilidades</h1>
 
       <div className="flex gap-2 mb-4">
@@ -115,6 +117,63 @@ function App() {
               </tbody>
             </table>
           </div>
+                    {/* Botón para descargar reporte PDF */}
+                    <div className="mt-4">
+            <button
+              onClick={async () => {
+                try {
+                  const res = await fetch("http://127.0.0.1:8000/scan-pdf", {
+                    method: "POST",
+                    headers: {
+                      "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify({ url }),
+                  });
+
+                  if (!res.ok) throw new Error("Error al generar el PDF");
+
+                  const blob = await res.blob();
+                  const link = document.createElement("a");
+                  link.href = URL.createObjectURL(blob);
+                  link.download = "reporte_vulnerabilidades.pdf";
+                  link.click();
+                } catch (err) {
+                  alert("⚠️ Error al descargar el informe.");
+                }
+              }}
+              className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700"
+            >
+              📄 Descargar informe PDF
+            </button>
+            <button
+               onClick={async () => {
+    try {
+      const res = await fetch("http://127.0.0.1:8000/crear-pdf", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ url, vulnerabilities }),
+      });
+
+      if (!res.ok) throw new Error("Error al generar el PDF");
+
+      const blob = await res.blob();
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(blob);
+      link.download = "reporte_vulnerabilidades.pdf";
+      link.click();
+    } catch (err) {
+      alert("⚠️ Error al descargar el informe.");
+    }
+  }}
+  className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700"
+>
+  📄 Descargar informe PDF
+</button>
+
+          </div>
+
         </div>
       )}
     </div>
