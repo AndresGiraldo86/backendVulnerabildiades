@@ -1,6 +1,4 @@
-#!/bin/sh
-'''exec' "/Users/andresgiraldo/Desktop/Proyecto WebApi Andres/venv/bin/python3" "$0" "$@"
-' '''
+#!/home/user/backendVulnerabildiades/venv/bin/python
 # -*- coding: utf-8 -*-
 import re
 import sys

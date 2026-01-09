@@ -7,8 +7,8 @@ from fastapi import FastAPI, BackgroundTasks, HTTPException
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
-from jinja2 import Environment, FileSystemLoader
-from weasyprint import HTML
+from fpdf import FPDF
+from typing import List, Any
 
 app = FastAPI()
 
@@ -25,10 +25,12 @@ app.add_middleware(
     allow_origins=["*"],
     allow_methods=["*"],
     allow_headers=["*"],
+    allow_credentials=True
 )
 
 class ScanRequest(BaseModel):
     url: str
+    vulnerabilities: List[Any] = []
 
 # Función para borrar archivos temporales después de enviarlos
 def cleanup_file(path: str):
@@ -101,34 +103,87 @@ async def scan_url_json(request: ScanRequest):
 @app.post("/scan-pdf")
 async def scan_url_pdf(request: ScanRequest, background_tasks: BackgroundTasks):
     try:
-        summary, stderr = await ejecutar_nuclei_async(request.url)
+        summary = request.vulnerabilities
+        
+        if not summary:
+            print("⚠️ Advertencia: Lista vacía")
 
-        # Cargar template HTML
-        env = Environment(loader=FileSystemLoader(HTML_TEMPLATE_DIR))
-        try:
-            template = env.get_template("report_template.html")
-        except Exception:
-            raise HTTPException(status_code=500, detail="No se encontró report_template.html en la carpeta templates")
+        # --- GENERACIÓN DE PDF CON FPDF (Sin dependencias de Linux) ---
+        class PDF(FPDF):
+            def header(self):
+                self.set_font('Arial', 'B', 15)
+                self.cell(0, 10, 'Reporte de Vulnerabilidades', 0, 1, 'C')
+                self.ln(5)
 
-        html_out = template.render(
-            url=request.url,
-            vulnerabilities=summary,
-            count=len(summary)
-        )
+            def footer(self):
+                self.set_y(-15)
+                self.set_font('Arial', 'I', 8)
+                self.cell(0, 10, f'Pagina {self.page_no()}', 0, 0, 'C')
 
-        # Crear PDF temporal
+        pdf = PDF()
+        pdf.add_page()
+        
+        # Titulo y URL
+        pdf.set_font("Arial", size=12)
+        pdf.cell(0, 10, f"Objetivo: {request.url}", ln=True)
+        pdf.cell(0, 10, f"Total hallazgos: {len(summary)}", ln=True)
+        pdf.ln(5)
+
+        # Tabla de vulnerabilidades
+        if summary:
+            # Cabecera
+            pdf.set_fill_color(200, 220, 255)
+            pdf.set_font("Arial", 'B', 10)
+            pdf.cell(40, 10, "Severidad", 1, 0, 'C', fill=True)
+            pdf.cell(60, 10, "Nombre", 1, 0, 'C', fill=True)
+            pdf.cell(90, 10, "Detalle / Ruta", 1, 1, 'C', fill=True)
+
+            # Filas
+            pdf.set_font("Arial", size=9)
+            for item in summary:
+                # Color según severidad
+                severity = item.get("severity", "unknown").lower()
+                if severity == "critical":
+                    pdf.set_text_color(200, 0, 0) # Rojo
+                elif severity == "high":
+                    pdf.set_text_color(255, 100, 0) # Naranja
+                else:
+                    pdf.set_text_color(0, 0, 0) # Negro
+
+                # Imprimir celdas (usando multi_cell para texto largo sería mejor, pero cell es simple)
+                # Cortamos texto largo para que no rompa la tabla simple
+                name_text = (item.get("name") or "")[:25]
+                match_text = (item.get("matchedAt") or "")[:40]
+                
+                pdf.cell(40, 10, severity.upper(), 1, 0, 'C')
+                pdf.cell(60, 10, name_text, 1, 0, 'L')
+                pdf.cell(90, 10, match_text, 1, 1, 'L')
+                
+                pdf.set_text_color(0, 0, 0) # Reset color
+
+        else:
+            pdf.cell(0, 10, "No se encontraron vulnerabilidades.", ln=True)
+
+        # Guardar archivo temporal
         with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as f:
-            HTML(string=html_out).write_pdf(f.name)
+            pdf.output(f.name)
             pdf_path = f.name
         
-        # Programar la eliminación del archivo para DESPUÉS de enviar la respuesta
+        # Limpieza programada
         background_tasks.add_task(cleanup_file, pdf_path)
 
         return FileResponse(
             pdf_path, 
-            filename=f"reporte_{request.url.replace('://', '_')}.pdf", 
+            filename=f"reporte_scan.pdf", 
             media_type="application/pdf"
         )
+
+    except Exception as e:
+        print(f"❌ Error generando PDF: {str(e)}")
+        # Importante: Imprimir el error completo para debug
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Error interno: {str(e)}")
 
     except Exception as e:
         print(f"❌ Error: {str(e)}")

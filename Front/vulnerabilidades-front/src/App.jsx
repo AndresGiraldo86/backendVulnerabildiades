@@ -6,16 +6,21 @@ function App() {
   const [error, setError] = useState("");
   const [cargando, setCargando] = useState(false);
 
+  // Tu URL del backend (la tomé de tu código anterior)
+  const BACKEND_URL = "https://8000-firebase-scan-vulnes-1767823093448.cluster-f73ibkkuije66wssuontdtbx6q.cloudworkstations.dev";
+
   const escanear = async () => {
     setError("");
     setCargando(true);
     setVulnerabilidades([]);
 
     try {
-      const res = await fetch("http://127.0.0.1:8000/scan-json", {
+      console.log("🚀 Intentando conectar a:", `${BACKEND_URL}/scan-json`);
+      
+      const res = await fetch(`${BACKEND_URL}/scan-json`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url,}),
+        body: JSON.stringify({ url }),
       });
 
       const data = await res.json();
@@ -23,11 +28,11 @@ function App() {
       if (data.status === "ok") {
         setVulnerabilidades(data.vulnerabilities);
       } else {
-        console.error("Respuesta del backend:", data);
-        setError("Error al procesar la respuesta del backend. " + (data.error || ""));
+        setError("Error del backend: " + (data.message || "Desconocido"));
       }
     } catch (e) {
-      setError("Hubo un error al hacer el escaneo");
+      console.error(e);
+      setError("Error de conexión. Revisa que el backend esté activo.");
     } finally {
       setCargando(false);
     }
@@ -35,23 +40,17 @@ function App() {
 
   const severidadColor = (nivel) => {
     switch (nivel) {
-      case "critical":
-        return "bg-red-700 text-white";
-      case "high":
-        return "bg-red-500 text-white";
-      case "medium":
-        return "bg-orange-400 text-white";
-      case "low":
-        return "bg-yellow-300 text-black";
-      default:
-        return "bg-gray-300 text-black";
+      case "critical": return "bg-red-700 text-white";
+      case "high": return "bg-red-500 text-white";
+      case "medium": return "bg-orange-400 text-white";
+      case "low": return "bg-yellow-300 text-black";
+      default: return "bg-gray-300 text-black";
     }
   };
 
   return (
     <div className="p-6 max-w-7xl mx-auto">
-      
-      <h1 className="text-3xl font-bold mb-4">🔍 Escáner de Vulnerabilidades</h1>
+    <h1 className="text-3xl font-bold mb-4">🔍 Escáner de Vulnerabilidades</h1>
 
       <div className="flex gap-2 mb-4">
         <input
@@ -63,121 +62,81 @@ function App() {
         />
         <button
           onClick={escanear}
-          className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
+          disabled={cargando}
+          className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 disabled:bg-gray-400"
         >
-          Escanear
+          {cargando ? "Escaneando..." : "Escanear"}
         </button>
       </div>
 
-      {cargando && <p className="text-blue-600">⏳ Escaneando...</p>}
-      {error && <p className="text-red-600">{error}</p>}
+      {cargando && <p className="text-blue-600 animate-pulse">⏳ Ejecutando Nuclei...</p>}
+      {error && <p className="text-red-600 font-bold">{error}</p>}
 
       {vulnerabilidades.length > 0 && (
         <div className="mt-6">
-          <h2 className="text-xl font-semibold mb-2">
-            Resultados ({vulnerabilidades.length})
-          </h2>
-          <div className="overflow-auto">
-            <table className="min-w-full table-auto border border-gray-300">
-              <thead>
-                <tr className="bg-gray-200">
-                  <th className="p-2 border">Nombre</th>
+          <h2 className="text-xl font-semibold mb-2">Resultados ({vulnerabilidades.length})</h2>
+          
+          <div className="overflow-auto max-h-[500px] border border-gray-300 rounded mb-4">
+            <table className="min-w-full table-auto">
+              <thead className="sticky top-0 bg-gray-200">
+                <tr>
                   <th className="p-2 border">Severidad</th>
+                  <th className="p-2 border">Nombre</th>
                   <th className="p-2 border">Ubicación</th>
-                  <th className="p-2 border">Descripción</th>
-                  <th className="p-2 border">Referencias</th>
-                </tr>
+              </tr>
               </thead>
               <tbody>
                 {vulnerabilidades.map((vuln, index) => (
                   <tr key={index} className="hover:bg-gray-50">
-                    <td className="p-2 border">{vuln.name || "N/A"}</td>
-                    <td className={`p-2 border font-semibold text-center ${severidadColor(vuln.severity)}`}>
-                      {vuln.severity || "info"}
+                    <td className={`p-2 border font-bold text-center ${severidadColor(vuln.severity)}`}>
+                      {vuln.severity}
                     </td>
-                    <td className="p-2 border">{vuln.matchedAt}</td>
-                    <td className="p-2 border text-sm">{vuln.description || "Sin descripción"}</td>
-                    <td className="p-2 border text-sm">
-                      {vuln.reference && vuln.reference.length > 0 ? (
-                        <ul className="list-disc pl-4">
-                          {vuln.reference.map((ref, i) => (
-                            <li key={i}>
-                              <a href={ref} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">
-                                {ref}
-                              </a>
-                            </li>
-                          ))}
-                        </ul>
-                      ) : (
-                        "N/A"
-                      )}
-                    </td>
+                    <td className="p-2 border">{vuln.name}</td>
+                    <td className="p-2 border text-xs">{vuln.matchedAt}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
-                    {/* Botón para descargar reporte PDF */}
-                    <div className="mt-4">
-            <button
-              onClick={async () => {
-                try {
-                  const res = await fetch("http://127.0.0.1:8000/scan-pdf", {
-                    method: "POST",
-                    headers: {
-                      "Content-Type": "application/json",
-                    },
-                    body: JSON.stringify({ url }),
-                  });
 
-                  if (!res.ok) throw new Error("Error al generar el PDF");
+          {/* BOTÓN CORREGIDO CON LA SOLUCIÓN */}
+          <button
+            onClick={async () => {
+              try {
+                alert("Generando PDF... (Esto puede tardar unos segundos)"); 
+                
+                const res = await fetch(`${BACKEND_URL}/scan-pdf`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ 
+                    url: url, 
+                    vulnerabilities: vulnerabilidades // <--- ¡AQUÍ ESTÁ LA CORRECCIÓN!
+                  }),
+                });
 
-                  const blob = await res.blob();
-                  const link = document.createElement("a");
-                  link.href = URL.createObjectURL(blob);
-                  link.download = "reporte_vulnerabilidades.pdf";
-                  link.click();
-                } catch (err) {
-                  alert("⚠️ Error al descargar el informe.");
-                }
-              }}
-              className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700"
-            >
-              📄 Descargar informe PDF
-            </button>
-            <button
-               onClick={async () => {
-    try {
-      const res = await fetch("http://127.0.0.1:8000/crear-pdf", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ url, vulnerabilities }),
-      });
-
-      if (!res.ok) throw new Error("Error al generar el PDF");
-
-      const blob = await res.blob();
-      const link = document.createElement("a");
-      link.href = URL.createObjectURL(blob);
-      link.download = "reporte_vulnerabilidades.pdf";
-      link.click();
-    } catch (err) {
-      alert("⚠️ Error al descargar el informe.");
-    }
-  }}
-  className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700"
->
-  📄 Descargar informe PDF
-</button>
-
-          </div>
-
+                if (!res.ok) throw new Error("Fallo al generar PDF");
+                
+                const blob = await res.blob();
+                const link = document.createElement("a");
+                link.href = URL.createObjectURL(blob);
+                link.download = `reporte_scan.pdf`;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                
+              } catch (err) {
+                console.error(err);
+                alert("Error descargando PDF: " + err.message);
+              }
+            }}
+            className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 font-bold"
+          >
+            📄 Descargar PDF
+          </button>
         </div>
       )}
     </div>
   );
 }
 
-export default App;
+  export default App;
